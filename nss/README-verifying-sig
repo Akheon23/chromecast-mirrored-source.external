@@ -1,0 +1,45 @@
+
+Original download location:
+--------------------------
+
+https://ftp.mozilla.org/pub/mozilla.org/security/nss/releases/NSS_3_14_1_WITH_CKBI_1_93_RTM/src/
+
+Signature verification:
+----------------------
+
+gpg: Signature made Sun 30 Dec 2012 08:49:11 AM PST using RSA key ID 25007724
+gpg: Good signature from "Kai Engert (at work) <kaie@kuix.de>"
+gpg:                 aka "Kai Engert (Red Hat) <kaie@redhat.com>"
+gpg:                 aka "Kai Engert (secondary work nickname) <kengert@redhat.com>"
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: 21D1 6E67 E183 98C8 DA9D  DF2E 1C27 4237 2500 7724
+
+Notes:
+-----
+
+Mozilla software is normally signed by the "Mozilla Software Releases" key
+(e.g. Firefox).  The current release is signed by "Kai Engert", a member
+of the NSS development team.
+
+Excerpt from an email I received from Kai Engert" to check this:
+
+...
+yes, NSS isn't signed using a Mozilla key. NSS code used not to be
+signed at all. It's not Mozilla who owns the NSS release process. NSS
+releases are being produced by the NSS team. I'm a member of that team
+and I often work on the release process.
+
+If you would like to verify that I'm a member of the release team, you
+could search the web for my activity related to NSS,
+https://www.google.de/search?q=kai+engert+nss+release
+
+My recent key has been signed by my older key, which in turn has been
+signed by several other people (including even Werner Koch), so you
+could have some confidence that my key belongs to my identity.
+
+If you check the NSS download directories for the older releases, you'll
+notice that they didn't contain any signatures at all. I had decided on
+my own that starting to sign with at least my own key is better than
+nothing.
+...

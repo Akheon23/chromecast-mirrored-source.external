@@ -1,0 +1,16 @@
+The source for NSS is contained in the tar in this directory.
+It can be validated by comparing the MD5, SHA1 checksums
+as well as the .sig provided by Mozilla.
+
+The source tar file is also extracted here for *reference only* (e.g.
+convienence of using code search and other read only tools).  The
+extracted source files are *not used* by the build process.
+
+*** DO NOT MODIFY THESE SOURCES DIRECTLY ***
+
+If you need to patch the NSS sources, create a patch
+and apply it in build.sh.  Note that the sources are built
+twice (source & target), so you may need to apply the
+patch twice.
+
+See build.sh for more details.
