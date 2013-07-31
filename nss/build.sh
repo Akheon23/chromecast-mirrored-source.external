@@ -121,6 +121,14 @@ rm -rf ${TARGET_OUT_INTERMEDIATES}/${NSS_TOP_DIR}
 mkdir -p ${TARGET_OUT_INTERMEDIATES}
 gunzip -dc ${NSS_SRC_TAR_GZ} | tar xfC - ${TARGET_OUT_INTERMEDIATES}
 
+# Apply target patches, if any.
+readonly PATCH_SRC=${LOCAL_PATH}/patches
+
+# Update certificate library from 1.93 to 1.94 (from NSS 3.15)
+for file in builtins/certdata.perl builtins/certdata.txt builtins/nssckbi.h; do
+  cp ${PATCH_SRC}/nss-3.15/nss/lib/ckfw/${file} ${TARGET_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/mozilla/security/nss/lib/ckfw/${file}
+done
+
 # We need to build the target in steps, and each of the build
 # components require differnt hacks to get them to cross compile
 # with our toolchain / environment.
