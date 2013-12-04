@@ -20,7 +20,7 @@ fi
 # Derive the NSS flags from the target cflags with exceptions
 # noted below:
 #
-# 1) -g and -Ox: we only support optimized target builds
+# 1) -Ox: we only support optimized target builds
 #    (see BUILD_OPT, enable/disable switches below).
 # 2) -fpic won't work, upgrade to -fPIC.
 # 3) NSS has some questionable string literal comparisons, we
@@ -29,7 +29,6 @@ fi
 #    (NSS configure script should figure out the right values).
 readonly NSS_CFLAGS=$(echo ${TARGET_CFLAGS} | sed \
   -e 's/ -O[s0123] / /g' \
-  -e 's/ -g / /g' \
   -e 's/ -fpic / -fPIC /g' \
   -e 's/ -Werror=address / /g' \
   -e 's/ -DANDROID / /g' \
@@ -156,10 +155,15 @@ make BUILD_OPT=1 CPU_TAG=_${TARGET_ARCH} OS_TEST=${TARGET_ARCH} CC=${CC} \
 # files.  It would be nice if we could do this.
 
 # Build NSS (depends on our system zlib).
+XCFLAGS=""
+DSO_LDOPTS="-shared"
+if [ "${TARGET}" = "arm-unknown-linux-gnueabi" ]; then
+  XCFLAGS+=" -I${TOP}/external/zlib -Wl,-rpath=${SYSROOT}/usr/lib -L${SYSROOT}/usr/lib"
+  DSO_LDOPTS+=" -L${SYSROOT}/usr/lib"
+fi
 make BUILD_OPT=1 CPU_TAG=_${TARGET_ARCH} OS_TEST=${TARGET_ARCH} CC=${CC} \
   DSO_CFLAGS="${NSS_CFLAGS}" AR="${AR} cr \$@" NSINSTALL=${NSINSTALL} \
-  XCFLAGS="-I${TOP}/external/zlib -Wl,-rpath=${SYSROOT}/usr/lib -L${SYSROOT}/usr/lib" \
-  DSO_LDOPTS="-shared -L${SYSROOT}/usr/lib" all
+  XCFLAGS="${XCFLAGS}" DSO_LDOPTS="${DSO_LDOPTS}" all
 
 popd
 
