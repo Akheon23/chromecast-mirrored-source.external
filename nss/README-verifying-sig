@@ -2,18 +2,31 @@
 Original download location:
 --------------------------
 
-https://ftp.mozilla.org/pub/mozilla.org/security/nss/releases/NSS_3_14_1_WITH_CKBI_1_93_RTM/src/
+ftp://ftp.mozilla.org/pub/mozilla.org/security/nss/releases/NSS_3_15_3_RTM/src/
 
 Signature verification:
 ----------------------
 
-gpg: Signature made Sun 30 Dec 2012 08:49:11 AM PST using RSA key ID 25007724
-gpg: Good signature from "Kai Engert (at work) <kaie@kuix.de>"
-gpg:                 aka "Kai Engert (Red Hat) <kaie@redhat.com>"
-gpg:                 aka "Kai Engert (secondary work nickname) <kengert@redhat.com>"
+Checked nss-3.15.3.tar.gz against Ubuntu's signature:
+
+http://security.ubuntu.com/ubuntu/pool/main/n/nss/nss_3.15.3-0ubuntu0.12.04.1.dsc
+
+gpg: Signature made Fri Nov 15 09:25:48 2013 EST using RSA key ID A744BE93
+gpg: Good signature from "Marc Deslauriers <marcdeslauriers@videotron.ca>"
+gpg:                 aka "Marc Deslauriers <mdeslaur@ubuntu.com>"
+gpg:                 aka "Marc Deslauriers <mdeslaur@canonical.com>"
+gpg:                 aka "Marc Deslauriers <marc.deslauriers@ubuntu.com>"
+gpg:                 aka "Marc Deslauriers <marc.deslauriers@canonical.com>"
 gpg: WARNING: This key is not certified with a trusted signature!
 gpg:          There is no indication that the signature belongs to the owner.
-Primary key fingerprint: 21D1 6E67 E183 98C8 DA9D  DF2E 1C27 4237 2500 7724
+Primary key fingerprint: 50C4 A0DD CF31 E452 CEB1  9B51 6569 D855 A744 BE93
+
+That key is signed by Kees Cook.
+
+The source code in that tarball matches:
+
+  diff -urN nss_ubuntu/nss-3.15.3/nss nss_local/nss-3.15.3/nss; echo $?
+  0
 
 Notes:
 -----

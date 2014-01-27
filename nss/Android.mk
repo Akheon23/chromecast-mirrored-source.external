@@ -3,10 +3,10 @@
 LOCAL_PATH:= $(call my-dir)
 
 # Source
-NSS_SRC_TAR_GZ := $(LOCAL_PATH)/nss-3.14.1.with.ckbi.1.93-with-nspr-4.9.4.tar.gz
+NSS_SRC_TAR_GZ := $(LOCAL_PATH)/nss-3.15.3-with-nspr-4.10.2.tar.gz
 
 # Top level path after untar
-NSS_TOP_DIR:= nss-3.14.1
+NSS_TOP_DIR:= nss-3.15.3
 
 # Local command to build NSS+NSPR
 NSS_BUILD_CMD := $(LOCAL_PATH)/build.sh

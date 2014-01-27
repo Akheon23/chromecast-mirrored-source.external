@@ -57,7 +57,7 @@ readonly TOP=${CURDIR}
 readonly SYSROOT=${TOP}/${TARGET_OUT}/build_sysroot
 
 # Sub directory from which we build NSS.
-readonly NSS_DIR=${NSS_TOP_DIR}/mozilla/security/nss
+readonly NSS_DIR=${NSS_TOP_DIR}/nss
 
 # Setup any global NSS build parameters (for both host
 # and target).
@@ -96,10 +96,10 @@ popd
 
 # Locate host commands.
 readonly NSINSTALL=$(find \
-  ${TOP}/${HOST_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/mozilla/security/coreconf/nsinstall/ \
+  ${TOP}/${HOST_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/nss/coreconf/nsinstall/ \
   -name nsinstall -type f | head -1)
 readonly CERTUTIL=$(find \
-  ${TOP}/${HOST_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/mozilla/security/nss/ \
+  ${TOP}/${HOST_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/nss/ \
   -name certutil -type f | head -1)
 if [ \! -x "${NSINSTALL}" -o \! -x "${CERTUTIL}" ]; then
   echo "$0: host commands not found"
@@ -123,11 +123,6 @@ gunzip -dc ${NSS_SRC_TAR_GZ} | tar xfC - ${TARGET_OUT_INTERMEDIATES}
 # Apply target patches, if any.
 readonly PATCH_SRC=${LOCAL_PATH}/patches
 
-# Update certificate library from 1.93 to 1.94 (from NSS 3.15)
-for file in builtins/certdata.perl builtins/certdata.txt builtins/nssckbi.h; do
-  cp ${PATCH_SRC}/nss-3.15/nss/lib/ckfw/${file} ${TARGET_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/mozilla/security/nss/lib/ckfw/${file}
-done
-
 # We need to build the target in steps, and each of the build
 # components require differnt hacks to get them to cross compile
 # with our toolchain / environment.
@@ -147,10 +142,6 @@ make BUILD_OPT=1 \
   CC=${CC} DSO_CFLAGS="${NSS_CFLAGS}" CPU_TAG=_${TARGET_ARCH} \
   NSINSTALL=${NSINSTALL} build_nspr
 
-# Build libdbm.
-make BUILD_OPT=1 CPU_TAG=_${TARGET_ARCH} OS_TEST=${TARGET_ARCH} CC=${CC} \
-  DSO_CFLAGS="${NSS_CFLAGS}" AR="${AR} cr \$@" NSINSTALL=${NSINSTALL} build_dbm
-
 # Note: we don't define NSS_USE_SYSTEM_SQLITE, see comments in our gyp
 # files.  It would be nice if we could do this.
 
@@ -158,8 +149,8 @@ make BUILD_OPT=1 CPU_TAG=_${TARGET_ARCH} OS_TEST=${TARGET_ARCH} CC=${CC} \
 XCFLAGS=""
 DSO_LDOPTS="-shared"
 if [ "${TARGET}" = "arm-unknown-linux-gnueabi" ]; then
-  XCFLAGS+=" -I${TOP}/external/zlib -Wl,-rpath=${SYSROOT}/usr/lib -L${SYSROOT}/usr/lib"
-  DSO_LDOPTS+=" -L${SYSROOT}/usr/lib"
+  XCFLAGS+=" -I${TOP}/external/zlib --sysroot=${SYSROOT}"
+  DSO_LDOPTS+=" --sysroot=${SYSROOT}"
 fi
 make BUILD_OPT=1 CPU_TAG=_${TARGET_ARCH} OS_TEST=${TARGET_ARCH} CC=${CC} \
   DSO_CFLAGS="${NSS_CFLAGS}" AR="${AR} cr \$@" NSINSTALL=${NSINSTALL} \
@@ -173,11 +164,11 @@ popd
 
 # Install headers for NSPR + NSS.
 mkdir -p ${SYSROOT}/usr/include/nspr
-cp -rpL ${TARGET_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/mozilla/dist/Linux*/include/* \
+cp -rpL ${TARGET_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/dist/Linux*/include/* \
   ${SYSROOT}/usr/include/nspr
 
 mkdir -p ${SYSROOT}/usr/include/nss
-cp -rpL ${TARGET_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/mozilla/dist/public/nss/* \
+cp -rpL ${TARGET_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/dist/public/nss/* \
   ${SYSROOT}/usr/include/nss
 
 # As we will building content_shell with use_system_ssl=0,
@@ -191,12 +182,12 @@ done
 # Install libraries.
 for i in libnss3.so libnssutil3.so libsmime3.so libplds4.so libplc4.so \
 libnspr4.so libnssckbi.so libsqlite3.so libsoftokn3.so libfreebl3.so; do
-  cp -pL ${TARGET_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/mozilla/dist/Linux*/lib/$i \
+  cp -pL ${TARGET_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/dist/Linux*/lib/$i \
     ${SYSROOT}/usr/lib
-  cp -pL ${TARGET_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/mozilla/dist/Linux*/lib/$i \
+  cp -pL ${TARGET_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/dist/Linux*/lib/$i \
     ${TARGET_OUT}/symbols/system/lib
   # Note: this will get stripped during the build.
-  cp -pL ${TARGET_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/mozilla/dist/Linux*/lib/$i \
+  cp -pL ${TARGET_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/dist/Linux*/lib/$i \
     ${TARGET_OUT}/system/lib
 done
 
@@ -226,21 +217,13 @@ readonly PWDFILE=${LOCAL_PATH}/insecure-certdb-password.txt
 # Use the new sql sharable nssdb format
 readonly SYSDB="sql:${NSSDB}"
 
-HOST_LIBRARY_PATH=$(echo ${HOST_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/mozilla/dist/Linux*/lib)
+HOST_LIBRARY_PATH=$(echo ${HOST_OUT_INTERMEDIATES}/${NSS_TOP_DIR}/dist/Linux*/lib)
 
 # Create the empty DB
 LD_LIBRARY_PATH=${HOST_LIBRARY_PATH} \
   ${CERTUTIL} -N -d ${SYSDB} -f ${PWDFILE}
 
 # Add any needed certs
-# Note: "TC,," means SSL: (Valid CA, Trusted CA and Trusted Client CA)
-
-# Subject: "CN=Google Internet Authority,O=Google Inc,C=US"
-LD_LIBRARY_PATH=${HOST_LIBRARY_PATH} \
-  ${CERTUTIL} -A -d ${SYSDB} -f ${PWDFILE} -t "TC,," \
-  -n "GoogleInternetAuthority" \
-  -i "vendor/eureka/ssl-certs/usr/share/ca-certificates/google/Google_Internet_Authority.crt"
-
 # Modify trust for any certs (if needed).
 
 # Example only:
