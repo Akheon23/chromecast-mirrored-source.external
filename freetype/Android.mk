@@ -62,6 +62,7 @@ LOCAL_TOOLCHAIN_PREBUILTS := \
 	$(LOCAL_PATH)/include/freetype/config/ftstdlib.h:usr/include/freetype2/freetype/config/ftstdlib.h \
 	$(LOCAL_PATH)/include/freetype/freetype.h:usr/include/freetype2/freetype/freetype.h \
 	$(LOCAL_PATH)/include/freetype/ftadvanc.h:usr/include/freetype2/freetype/ftadvanc.h \
+	$(LOCAL_PATH)/include/freetype/ftbdf.h:usr/include/freetype2/freetype/ftbdf.h \
 	$(LOCAL_PATH)/include/freetype/ftbitmap.h:usr/include/freetype2/freetype/ftbitmap.h \
 	$(LOCAL_PATH)/include/freetype/fterrdef.h:usr/include/freetype2/freetype/fterrdef.h \
 	$(LOCAL_PATH)/include/freetype/fterrors.h:usr/include/freetype2/freetype/fterrors.h \
