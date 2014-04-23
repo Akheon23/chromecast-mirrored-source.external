@@ -17,6 +17,18 @@ if [ -z "${TARGET_CC}" -o -z "${TARGET_CFLAGS}" -o \
   exit 1
 fi
 
+echo '################## NSS ENVIRONMENT ##########################'
+echo export TARGET_CC=${TARGET_CC}
+echo export TARGET_CFLAGS=${TARGET_CFLAGS}
+echo export TARGET_AR=${TARGET_AR}
+echo export TARGET_OUT=${TARGET_OUT}
+echo export TARGET_ARCH=${TARGET_ARCH}
+echo export HOST_OUT=${HOST_OUT}
+echo export NSS_SRC_TAR_GZ=${NSS_SRC_TAR_GZ}
+echo export NSS_TOP_DIR=${NSS_TOP_DIR}
+echo export CURDIR=${CURDIR}
+echo '################## END NSS ENVIRONMENT #######################'
+
 # Derive the NSS flags from the target cflags with exceptions
 # noted below:
 #
