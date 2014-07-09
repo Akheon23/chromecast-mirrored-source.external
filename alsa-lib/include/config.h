@@ -112,6 +112,9 @@
 /* Define to 1 if you have the <wordexp.h> header file. */
 #define HAVE_WORDEXP_H 1
 
+/* Define to 1 if compiler supports __thread */
+#define HAVE___THREAD 1
+
 /* Define to the sub-directory in which libtool stores uninstalled libraries.
    */
 #define LT_OBJDIR ".libs/"
@@ -140,6 +143,9 @@
 /* Define to the version of this package. */
 #define PACKAGE_VERSION ""
 
+/* Max number of cards */
+#define SND_MAX_CARDS 32
+
 /* Define to 1 if you have the ANSI C header files. */
 #define STDC_HEADERS 1
 
@@ -156,7 +162,7 @@
 #define TMPDIR "/tmp"
 
 /* sound library version string */
-#define VERSION "1.0.26"
+#define VERSION "1.0.27.2"
 
 /* compiled with versioned symbols */
 #define VERSIONED_SYMBOLS /**/

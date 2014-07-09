@@ -103,7 +103,7 @@ int snd_ctl_close(snd_ctl_t *ctl)
 /**
  * \brief set nonblock mode
  * \param ctl CTL handle
- * \param nonblock 0 = block, 1 = nonblock mode
+ * \param nonblock 0 = block, 1 = nonblock mode, 2 = abort
  * \return 0 on success otherwise a negative error code
  */
 int snd_ctl_nonblock(snd_ctl_t *ctl, int nonblock)
@@ -2323,8 +2323,8 @@ void snd_ctl_elem_value_copy(snd_ctl_elem_value_t *dst, const snd_ctl_elem_value
 
 /**
  * \brief compare one #snd_ctl_elem_value_t to another
- * \param dst pointer to destination
- * \param src pointer to source
+ * \param left pointer to first value
+ * \param right pointer to second value
  * \return 0 on match, less than or greater than otherwise, see memcmp
  */
 int snd_ctl_elem_value_compare(snd_ctl_elem_value_t *left, const snd_ctl_elem_value_t *right)

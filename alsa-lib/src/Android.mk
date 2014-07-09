@@ -1,5 +1,7 @@
 LOCAL_PATH := $(call my-dir)
 
+ALSA_PATH := $(LOCAL_PATH)
+
 ALSA_STATIC_LIBS := \
 	control \
 	hwdep \
@@ -21,6 +23,9 @@ LOCAL_SRC_FILES := \
 	output.c \
 	shmarea.c \
 	socket.c \
+	ucm/main.c \
+	ucm/parser.c \
+	ucm/utils.c \
 	userfile.c
 ALSA_LIB_CFLAGS := -DHAVE_CONFIG_H -D_GNU_SOURCE
 LOCAL_CFLAGS := $(ALSA_LIB_CFLAGS)
@@ -76,3 +81,20 @@ sub_makefiles := $(addprefix $(LOCAL_PATH)/,$(addsuffix /Android.mk, \
 ))
 
 include $(sub_makefiles)
+
+include $(CLEAR_VARS)
+SOURCE_ALSA_CONF_PATH := $(ALSA_PATH)/conf
+LOCAL_MODULE :=alsa-conf
+LOCAL_MODULE_TAGS := optional
+LOCAL_REQUIRED_MODULES := acp
+TARGET_ALSA_CONF_PATH := $(TARGET_OUT)/usr/share/alsa
+include $(BUILD_PHONY_PACKAGE)
+
+.PHONY: copy_alsa_conf
+copy_alsa_conf:
+	mkdir -p $(TARGET_ALSA_CONF_PATH)
+	rsync -a $(SOURCE_ALSA_CONF_PATH)/alsa.conf $(TARGET_ALSA_CONF_PATH)
+	rsync -a $(SOURCE_ALSA_CONF_PATH)/cards $(TARGET_ALSA_CONF_PATH)
+	rsync -a $(SOURCE_ALSA_CONF_PATH)/pcm $(TARGET_ALSA_CONF_PATH)
+
+$(LOCAL_BUILT_MODULE): copy_alsa_conf

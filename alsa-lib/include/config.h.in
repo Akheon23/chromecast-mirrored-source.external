@@ -111,6 +111,9 @@
 /* Define to 1 if you have the <wordexp.h> header file. */
 #undef HAVE_WORDEXP_H
 
+/* Define to 1 if compiler supports __thread */
+#undef HAVE___THREAD
+
 /* Define to the sub-directory in which libtool stores uninstalled libraries.
    */
 #undef LT_OBJDIR
@@ -138,6 +141,9 @@
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
+
+/* Max number of cards */
+#undef SND_MAX_CARDS
 
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS

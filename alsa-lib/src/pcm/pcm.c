@@ -162,7 +162,7 @@ The PCM device has accepted communication parameters and it is waiting
 for #snd_pcm_prepare() call to prepare the hardware for
 selected operation (playback or capture).
 
-\par SND_PCM_STATE_PREPARE
+\par SND_PCM_STATE_PREPARED
 The PCM device is prepared for operation. Application can use
 #snd_pcm_start() call, write or read data to start
 the operation.
@@ -437,7 +437,7 @@ to #SND_PCM_STATE_SETUP
 if successfully finishes, otherwise the state #SND_PCM_STATE_OPEN
 is entered.
 When it is brought to SETUP state, this function automatically
-calls #snd_pcm_prepare() function to bring to the PREPARE state
+calls #snd_pcm_prepare() function to bring to the PREPARED state
 as below.
 
 \par snd_pcm_prepare
@@ -633,6 +633,7 @@ playback devices.
 #include <malloc.h>
 #include <stdarg.h>
 #include <signal.h>
+#include <ctype.h>
 #include <sys/poll.h>
 #include <sys/shm.h>
 #include <sys/mman.h>
@@ -715,7 +716,7 @@ int snd_pcm_close(snd_pcm_t *pcm)
 /**
  * \brief set nonblock mode
  * \param pcm PCM handle
- * \param nonblock 0 = block, 1 = nonblock mode
+ * \param nonblock 0 = block, 1 = nonblock mode, 2 = abort
  * \return 0 on success otherwise a negative error code
  */
 int snd_pcm_nonblock(snd_pcm_t *pcm, int nonblock)
@@ -724,6 +725,10 @@ int snd_pcm_nonblock(snd_pcm_t *pcm, int nonblock)
 	assert(pcm);
 	if ((err = pcm->ops->nonblock(pcm->op_arg, nonblock)) < 0)
 		return err;
+	if (nonblock == 2) {
+		pcm->mode |= SND_PCM_ABORT;
+		return 0;
+	}
 	if (nonblock)
 		pcm->mode |= SND_PCM_NONBLOCK;
 	else {
@@ -827,7 +832,7 @@ int snd_pcm_hw_params(snd_pcm_t *pcm, snd_pcm_hw_params_t *params)
 {
 	int err;
 	assert(pcm && params);
-	err = _snd_pcm_hw_params(pcm, params);
+	err = _snd_pcm_hw_params_internal(pcm, params);
 	if (err < 0)
 		return err;
 	err = snd_pcm_prepare(pcm);
@@ -894,7 +899,7 @@ int snd_pcm_sw_params(snd_pcm_t *pcm, snd_pcm_sw_params_t *params)
 	pcm->tstamp_mode = params->tstamp_mode;
 	pcm->period_step = params->period_step;
 	pcm->avail_min = params->avail_min;
-	pcm->period_event = params->period_event;
+	pcm->period_event = sw_get_period_event(params);
 	pcm->start_threshold = params->start_threshold;
 	pcm->stop_threshold = params->stop_threshold;
 	pcm->silence_threshold = params->silence_threshold;
@@ -1553,6 +1558,12 @@ static const char *const snd_pcm_format_names[] = {
 	FORMAT(S18_3BE),
 	FORMAT(U18_3LE),
 	FORMAT(U18_3BE),
+	FORMAT(G723_24),
+	FORMAT(G723_24_1B),
+	FORMAT(G723_40),
+	FORMAT(G723_40_1B),
+	FORMAT(DSD_U8),
+	FORMAT(DSD_U16_LE),
 };
 
 static const char *const snd_pcm_format_aliases[SND_PCM_FORMAT_LAST+1] = {
@@ -1606,6 +1617,12 @@ static const char *const snd_pcm_format_descriptions[] = {
 	FORMATD(S18_3BE, "Signed 18 bit Big Endian in 3bytes"),
 	FORMATD(U18_3LE, "Unsigned 18 bit Little Endian in 3bytes"),
 	FORMATD(U18_3BE, "Unsigned 18 bit Big Endian in 3bytes"),
+	FORMATD(G723_24, "G.723 (ADPCM) 24 kbit/s, 8 samples in 3 bytes"),
+	FORMATD(G723_24_1B, "G.723 (ADPCM) 24 kbit/s, 1 sample in 1 byte"),
+	FORMATD(G723_40, "G.723 (ADPCM) 40 kbit/s, 8 samples in 3 bytes"),
+	FORMATD(G723_40_1B, "G.723 (ADPCM) 40 kbit/s, 1 sample in 1 byte"),
+	FORMATD(DSD_U8,  "Direct Stream Digital, 1-byte (x8), oldest bit in MSB"),
+	FORMATD(DSD_U16_LE, "Direct Stream Digital, 2-byte (x16), little endian, oldest bits in MSB"),
 };
 
 static const char *const snd_pcm_type_names[] = {
@@ -1633,11 +1650,11 @@ static const char *const snd_pcm_type_names[] = {
 	PCMTYPE(LADSPA), 
 	PCMTYPE(DMIX), 
 	PCMTYPE(JACK),
-        PCMTYPE(DSNOOP),
-        PCMTYPE(IEC958),
+	PCMTYPE(DSNOOP),
+	PCMTYPE(IEC958),
 	PCMTYPE(SOFTVOL),
-        PCMTYPE(IOPLUG),
-        PCMTYPE(EXTPLUG),
+	PCMTYPE(IOPLUG),
+	PCMTYPE(EXTPLUG),
 	PCMTYPE(MMAP_EMUL),
 };
 
@@ -2170,7 +2187,12 @@ static int snd_pcm_open_conf(snd_pcm_t **pcmp, const char *name,
 	if (open_func) {
 		err = open_func(pcmp, name, pcm_root, pcm_conf, stream, mode);
 		if (err >= 0) {
-			(*pcmp)->open_func = open_func;
+			if ((*pcmp)->open_func) {
+				/* only init plugin (like empty, asym) */
+				snd_dlobj_cache_put(open_func);
+			} else {
+				(*pcmp)->open_func = open_func;
+			}
 			err = 0;
 		} else {
 			snd_dlobj_cache_put(open_func);
@@ -2351,7 +2373,7 @@ int snd_pcm_open_named_slave(snd_pcm_t **pcmp, const char *name,
  */
 int snd_pcm_wait(snd_pcm_t *pcm, int timeout)
 {
-	if (snd_pcm_mmap_avail(pcm) >= pcm->avail_min) {
+	if (!snd_pcm_may_wait_for_avail_min(pcm, snd_pcm_mmap_avail(pcm))) {
 		/* check more precisely */
 		switch (snd_pcm_state(pcm)) {
 		case SND_PCM_STATE_XRUN:
@@ -2395,7 +2417,7 @@ int snd_pcm_wait_nocheck(snd_pcm_t *pcm, int timeout)
 	do {
 		err_poll = poll(pfd, npfds, timeout);
 		if (err_poll < 0) {
-		        if (errno == EINTR)
+		        if (errno == EINTR && !PCMINABORT(pcm))
 		                continue;
 			return -errno;
                 }
@@ -2705,6 +2727,8 @@ int snd_pcm_area_copy(const snd_pcm_channel_area_t *dst_area, snd_pcm_uframes_t 
 	    dst_area->step == (unsigned int) width) {
 		size_t bytes = samples * width / 8;
 		samples -= bytes * 8 / width;
+		assert(src < dst || src >= dst + bytes);
+		assert(dst < src || dst >= src + bytes);
 		memcpy(dst, src, bytes);
 		if (samples == 0)
 			return 0;
@@ -2839,17 +2863,21 @@ int snd_pcm_areas_copy(const snd_pcm_channel_area_t *dst_areas, snd_pcm_uframes_
 				break;
 		}
 		if (chns > 1 && chns * width == step) {
-			/* Collapse the areas */
-			snd_pcm_channel_area_t s, d;
-			s.addr = src_start->addr;
-			s.first = src_start->first;
-			s.step = width;
-			d.addr = dst_start->addr;
-			d.first = dst_start->first;
-			d.step = width;
-			snd_pcm_area_copy(&d, dst_offset * chns,
-					  &s, src_offset * chns, 
-					  frames * chns, format);
+			if (src_offset != dst_offset ||
+			    src_start->addr != dst_start->addr ||
+			    src_start->first != dst_start->first) {
+				/* Collapse the areas */
+				snd_pcm_channel_area_t s, d;
+				s.addr = src_start->addr;
+				s.first = src_start->first;
+				s.step = width;
+				d.addr = dst_start->addr;
+				d.first = dst_start->first;
+				d.step = width;
+				snd_pcm_area_copy(&d, dst_offset * chns,
+						  &s, src_offset * chns, 
+						  frames * chns, format);
+			}
 			channels -= chns;
 		} else {
 			snd_pcm_area_copy(dst_start, dst_offset,
@@ -3120,6 +3148,26 @@ int snd_pcm_hw_params_can_disable_period_wakeup(const snd_pcm_hw_params_t *param
 		return 0; /* FIXME: should be a negative error? */
 	}
 	return !!(params->info & SNDRV_PCM_INFO_NO_PERIOD_WAKEUP);
+}
+
+/**
+ * \brief Check if hardware supports audio wallclock timestamps
+ * \param params Configuration space
+ * \retval 0 Hardware doesn't support audio wallclock timestamps
+ * \retval 1 Hardware supports audio wallclock timestamps
+ *
+ * This function should only be called when the configuration space
+ * contains a single configuration. Call #snd_pcm_hw_params to choose
+ * a single configuration from the configuration space.
+ */
+int snd_pcm_hw_params_supports_audio_wallclock_ts(const snd_pcm_hw_params_t *params)
+{
+	assert(params);
+	if (CHECK_SANITY(params->info == ~0U)) {
+		SNDMSG("invalid PCM info field");
+		return 0; /* FIXME: should be a negative error? */
+	}
+	return !!(params->info & SNDRV_PCM_INFO_HAS_WALL_CLOCK);
 }
 
 /**
@@ -5546,7 +5594,7 @@ int snd_pcm_sw_params_current(snd_pcm_t *pcm, snd_pcm_sw_params_t *params)
 	params->period_step = pcm->period_step;
 	params->sleep_min = 0;
 	params->avail_min = pcm->avail_min;
-	params->period_event = pcm->period_event;
+	sw_set_period_event(params, pcm->period_event);
 	params->xfer_align = 1;
 	params->start_threshold = pcm->start_threshold;
 	params->stop_threshold = pcm->stop_threshold;
@@ -5854,7 +5902,7 @@ int snd_pcm_sw_params_get_avail_min(const snd_pcm_sw_params_t *params, snd_pcm_u
 int snd_pcm_sw_params_set_period_event(snd_pcm_t *pcm, snd_pcm_sw_params_t *params, int val)
 {
 	assert(pcm && params);
-	params->period_event = val;
+	sw_set_period_event(params, val);
 	return 0;
 }
 
@@ -5867,7 +5915,7 @@ int snd_pcm_sw_params_set_period_event(snd_pcm_t *pcm, snd_pcm_sw_params_t *para
 int snd_pcm_sw_params_get_period_event(const snd_pcm_sw_params_t *params, int *val)
 {
 	assert(params && val);
-	*val = params->period_event;
+	*val = sw_get_period_event(params);
 	return 0;
 }
 
@@ -6213,6 +6261,17 @@ void snd_pcm_status_get_htstamp(const snd_pcm_status_t *obj, snd_htimestamp_t *p
 use_default_symbol_version(__snd_pcm_status_get_htstamp, snd_pcm_status_get_htstamp, ALSA_0.9.0rc8);
 
 /** 
+ * \brief Get "now" hi-res audio timestamp from a PCM status container
+ * \param obj pointer to #snd_pcm_status_t
+ * \param ptr Pointer to returned timestamp
+ */
+void snd_pcm_status_get_audio_htstamp(const snd_pcm_status_t *obj, snd_htimestamp_t *ptr)
+{
+	assert(obj && ptr);
+	*ptr = obj->audio_tstamp;
+}
+
+/**
  * \brief Get delay from a PCM status container (see #snd_pcm_delay)
  * \return Delay in frames
  *
@@ -6739,14 +6798,14 @@ snd_pcm_sframes_t snd_pcm_write_areas(snd_pcm_t *pcm, const snd_pcm_channel_area
 			goto _end;
 		}
 		if ((state == SND_PCM_STATE_RUNNING &&
-		     (snd_pcm_uframes_t)avail < pcm->avail_min &&
-		     size > (snd_pcm_uframes_t)avail)) {
+		     size > (snd_pcm_uframes_t)avail &&
+		     snd_pcm_may_wait_for_avail_min(pcm, avail))) {
 			if (pcm->mode & SND_PCM_NONBLOCK) {
 				err = -EAGAIN;
 				goto _end;
 			}
 
-			err = snd_pcm_wait(pcm, -1);
+			err = snd_pcm_wait_nocheck(pcm, -1);
 			if (err < 0)
 				break;
 			goto _again;			
@@ -7300,6 +7359,451 @@ OBSOLETE1(snd_pcm_sw_params_get_stop_threshold, ALSA_0.9, ALSA_0.9.0rc4);
 OBSOLETE1(snd_pcm_sw_params_get_silence_threshold, ALSA_0.9, ALSA_0.9.0rc4);
 OBSOLETE1(snd_pcm_sw_params_get_silence_size, ALSA_0.9, ALSA_0.9.0rc4);
 
+#endif /* DOC_HIDDEN */
+
+static int chmap_equal(const snd_pcm_chmap_t *a, const snd_pcm_chmap_t *b)
+{
+	if (a->channels != b->channels)
+		return 0;
+	return !memcmp(a->pos, b->pos, a->channels * sizeof(a->pos[0]));
+}
+
+/**
+ * \!brief Query the available channel maps
+ * \param pcm PCM handle to query
+ * \return the NULL-terminated array of integer pointers, each of
+ * which contains the channel map. A channel map is represented by an
+ * integer array, beginning with the channel map type, followed by the
+ * number of channels, and the position of each channel.
+ *
+ * Note: the caller is requested to release the returned value via
+ * snd_pcm_free_chmaps().
+ */
+snd_pcm_chmap_query_t **snd_pcm_query_chmaps(snd_pcm_t *pcm)
+{
+	if (!pcm->ops->query_chmaps)
+		return NULL;
+	return pcm->ops->query_chmaps(pcm);
+}
+
+/**
+ * \!brief Release the channel map array allocated via #snd_pcm_query_chmaps
+ * \param maps the array pointer to release
+ */
+void snd_pcm_free_chmaps(snd_pcm_chmap_query_t **maps)
+{
+	snd_pcm_chmap_query_t **p = maps;
+	if (!maps)
+		return;
+	for (p = maps; *p; p++)
+		free(*p);
+	free(maps);
+}
+
+/**
+ * \!brief Get the current channel map
+ * \param pcm PCM instance
+ * \return the current channel map, or NULL if error
+ *
+ * Note: the caller is requested to release the returned value via free()
+ */
+snd_pcm_chmap_t *snd_pcm_get_chmap(snd_pcm_t *pcm)
+{
+	if (!pcm->ops->get_chmap)
+		return NULL;
+	return pcm->ops->get_chmap(pcm);
+}
+
+/**
+ * \!brief Configure the current channel map
+ * \param pcm PCM instance
+ * \param map the channel map to write
+ * \return zero if succeeded, or a negative error code
+ */
+int snd_pcm_set_chmap(snd_pcm_t *pcm, const snd_pcm_chmap_t *map)
+{
+	const snd_pcm_chmap_t *oldmap = snd_pcm_get_chmap(pcm);
+	if (oldmap && chmap_equal(oldmap, map))
+		return 0;
+
+	if (!pcm->ops->set_chmap)
+		return -ENXIO;
+	return pcm->ops->set_chmap(pcm, map);
+}
+
+/*
+ */
+#ifndef DOC_HIDDEN
+#define _NAME(n) [SND_CHMAP_TYPE_##n] = #n
+static const char *chmap_type_names[SND_CHMAP_TYPE_LAST + 1] = {
+	_NAME(NONE), _NAME(FIXED), _NAME(VAR), _NAME(PAIRED),
+};
+#undef _NAME
+#endif
+
+/**
+ * \!brief Get a name string for a channel map type as query results
+ * \param val Channel position
+ * \return The string corresponding to the given type, or NULL
+ */
+const char *snd_pcm_chmap_type_name(enum snd_pcm_chmap_type val)
+{
+	if (val <= SND_CHMAP_TYPE_LAST)
+		return chmap_type_names[val];
+	else
+		return NULL;
+}
+
+#ifndef DOC_HIDDEN
+#define _NAME(n) [SND_CHMAP_##n] = #n
+static const char *chmap_names[SND_CHMAP_LAST + 1] = {
+	_NAME(UNKNOWN), _NAME(NA), _NAME(MONO),
+	_NAME(FL), _NAME(FR),
+	_NAME(RL), _NAME(RR),
+	_NAME(FC), _NAME(LFE),
+	_NAME(SL), _NAME(SR),
+	_NAME(RC), _NAME(FLC), _NAME(FRC), _NAME(RLC), _NAME(RRC),
+	_NAME(FLW), _NAME(FRW),
+	_NAME(FLH), _NAME(FCH), _NAME(FRH), _NAME(TC),
+	_NAME(TFL), _NAME(TFR), _NAME(TFC),
+	_NAME(TRL), _NAME(TRR), _NAME(TRC),
+	_NAME(TFLC), _NAME(TFRC), _NAME(TSL), _NAME(TSR),
+	_NAME(LLFE), _NAME(RLFE),
+	_NAME(BC), _NAME(BLC), _NAME(BRC),
+};
+#undef _NAME
+#endif
+
+/**
+ * \!brief Get a name string for a standard channel map position
+ * \param val Channel position
+ * \return The string corresponding to the given position, or NULL
+ */
+const char *snd_pcm_chmap_name(enum snd_pcm_chmap_position val)
+{
+	if (val <= SND_CHMAP_LAST)
+		return chmap_names[val];
+	else
+		return NULL;
+}
+
+static const char *chmap_long_names[SND_CHMAP_LAST + 1] = {
+	[SND_CHMAP_UNKNOWN] = "Unknown",
+	[SND_CHMAP_NA] = "Unused",
+	[SND_CHMAP_MONO] = "Mono",
+	[SND_CHMAP_FL] = "Front Left",
+	[SND_CHMAP_FR] = "Front Right",
+	[SND_CHMAP_RL] = "Rear Left",
+	[SND_CHMAP_RR] = "Rear Right",
+	[SND_CHMAP_FC] = "Front Center",
+	[SND_CHMAP_LFE] = "LFE",
+	[SND_CHMAP_SL] = "Side Left",
+	[SND_CHMAP_SR] = "Side Right",
+	[SND_CHMAP_RC] = "Rear Center",
+	[SND_CHMAP_FLC] = "Front Left Center",
+	[SND_CHMAP_FRC] = "Front Right Center",
+	[SND_CHMAP_RLC] = "Rear Left Center",
+	[SND_CHMAP_RRC] = "Rear Right Center",
+	[SND_CHMAP_FLW] = "Front Left Wide",
+	[SND_CHMAP_FRW] = "Front Right Wide",
+	[SND_CHMAP_FLH] = "Front Left High",
+	[SND_CHMAP_FCH] = "Front Center High",
+	[SND_CHMAP_FRH] = "Front Right High",
+	[SND_CHMAP_TC] = "Top Center",
+	[SND_CHMAP_TFL] = "Top Front Left",
+	[SND_CHMAP_TFR] = "Top Front Right",
+	[SND_CHMAP_TFC] = "Top Front Center",
+	[SND_CHMAP_TRL] = "Top Rear Left",
+	[SND_CHMAP_TRR] = "Top Rear Right",
+	[SND_CHMAP_TRC] = "Top Rear Center",
+	[SND_CHMAP_TFLC] = "Top Front Left Center",
+	[SND_CHMAP_TFRC] = "Top Front Right Center",
+	[SND_CHMAP_TSL] = "Top Side Left",
+	[SND_CHMAP_TSR] = "Top Side Right",
+	[SND_CHMAP_LLFE] = "Left LFE",
+	[SND_CHMAP_RLFE] = "Right LFE",
+	[SND_CHMAP_BC] = "Bottom Center",
+	[SND_CHMAP_BLC] = "Bottom Left Center",
+	[SND_CHMAP_BRC] = "Bottom Right Center",
+};
+
+/**
+ * \!brief Get a longer name string for a standard channel map position
+ * \param val Channel position
+ * \return The string corresponding to the given position, or NULL
+ */
+const char *snd_pcm_chmap_long_name(enum snd_pcm_chmap_position val)
+{
+	if (val <= SND_CHMAP_LAST)
+		return chmap_long_names[val];
+	else
+		return NULL;
+}
+
+/**
+ * \!brief Print the channels in chmap on the buffer
+ * \param map The channel map to print
+ * \param maxlen The maximal length to write (including NUL letter)
+ * \param buf The buffer to write
+ * \return The actual string length or a negative error code
+ */
+int snd_pcm_chmap_print(const snd_pcm_chmap_t *map, size_t maxlen, char *buf)
+{
+	unsigned int i, len = 0;
+
+	for (i = 0; i < map->channels; i++) {
+		unsigned int p = map->pos[i] & SND_CHMAP_POSITION_MASK;
+		if (i > 0) {
+			len += snprintf(buf + len, maxlen - len, " ");
+			if (len >= maxlen)
+				return -ENOMEM;
+		}
+		if (map->pos[i] & SND_CHMAP_DRIVER_SPEC)
+			len += snprintf(buf + len, maxlen, "%d", p);
+		else {
+			const char *name = chmap_names[p];
+			if (name)
+				len += snprintf(buf + len, maxlen - len,
+						"%s", name);
+			else
+				len += snprintf(buf + len, maxlen - len,
+						"Ch%d", p);
+		}
+		if (len >= maxlen)
+			return -ENOMEM;
+		if (map->pos[i] & SND_CHMAP_PHASE_INVERSE) {
+			len += snprintf(buf + len, maxlen - len, "[INV]");
+			if (len >= maxlen)
+				return -ENOMEM;
+		}
+	}
+	return len;
+}
+
+static int str_to_chmap(const char *str, int len)
+{
+	int val;
+	unsigned long v;
+	char *p;
+
+	if (isdigit(*str)) {
+		v = strtoul(str, &p, 0);
+		if (v == ULONG_MAX)
+			return -1;
+		val = v;
+		val |= SND_CHMAP_DRIVER_SPEC;
+		str = p;
+	} else if (!strncasecmp(str, "ch", 2)) {
+		v = strtoul(str + 2, &p, 0);
+		if (v == ULONG_MAX)
+			return -1;
+		val = v;
+		str = p;
+	} else {
+		for (val = 0; val <= SND_CHMAP_LAST; val++) {
+			int slen;
+			assert(chmap_names[val]);
+			slen = strlen(chmap_names[val]);
+			if (slen > len)
+				continue;
+			if (!strncasecmp(str, chmap_names[val], slen) &&
+			    !isalpha(str[slen])) {
+				str += slen;
+				break;
+			}
+		}
+		if (val > SND_CHMAP_LAST)
+			return -1;
+	}
+	if (str && !strncasecmp(str, "[INV]", 5))
+		val |= SND_CHMAP_PHASE_INVERSE;
+	return val;
+}
+
+/**
+ * \!brief Convert from string to channel position
+ * \param str The string to parse
+ * \return The channel position value or -1 as an error
+ */
+unsigned int snd_pcm_chmap_from_string(const char *str)
+{
+	return str_to_chmap(str, strlen(str));
+}
+
+/**
+ * \!brief Convert from string to channel map
+ * \param str The string to parse
+ * \return The channel map
+ *
+ * Note: the caller is requested to release the returned value via free()
+ */
+snd_pcm_chmap_t *snd_pcm_chmap_parse_string(const char *str)
+{
+	int i, ch = 0;
+	int tmp_map[64];
+	snd_pcm_chmap_t *map;
+
+	for (;;) {
+		const char *p;
+		int len, val;
+
+		if (ch >= (int)(sizeof(tmp_map) / sizeof(tmp_map[0])))
+			return NULL;
+		for (p = str; *p && isalnum(*p); p++)
+			;
+		len = p - str;
+		if (!len)
+			return NULL;
+		val = str_to_chmap(str, len);
+		if (val < 0)
+			return NULL;
+		str += len;
+		if (*str == '[') {
+			if (!strncmp(str, "[INV]", 5)) {
+				val |= SND_CHMAP_PHASE_INVERSE;
+				str += 5;
+			}
+		}
+		tmp_map[ch] = val;
+		ch++;
+		for (; *str && !isalnum(*str); str++)
+			;
+		if (!*str)
+			break;
+	}
+	map = malloc(sizeof(*map) + ch * sizeof(int));
+	if (!map)
+		return NULL;
+	map->channels = ch;
+	for (i = 0; i < ch; i++)
+		map->pos[i] = tmp_map[i];
+	return map;
+}
+
+/* copy a single channel map with the fixed type to chmap_query pointer */
+static int _copy_to_fixed_query_map(snd_pcm_chmap_query_t **dst,
+				    const snd_pcm_chmap_t *src)
+{
+	*dst = malloc((src->channels + 2) * sizeof(int));
+	if (!*dst)
+		return -ENOMEM;
+	(*dst)->type = SND_CHMAP_TYPE_FIXED;
+	memcpy(&(*dst)->map, src, (src->channels + 1) * sizeof(int));
+	return 0;
+}
+
+#ifndef DOC_HIDDEN
+/* make a chmap_query array from a single channel map */
+snd_pcm_chmap_query_t **
+_snd_pcm_make_single_query_chmaps(const snd_pcm_chmap_t *src)
+{
+	snd_pcm_chmap_query_t **maps;
+
+	maps = calloc(2, sizeof(*maps));
+	if (!maps)
+		return NULL;
+	if (_copy_to_fixed_query_map(maps, src)) {
+		free(maps);
+		return NULL;
+	}
+	return maps;
+}
+
+/* make a copy of chmap */
+snd_pcm_chmap_t *_snd_pcm_copy_chmap(const snd_pcm_chmap_t *src)
+{
+	snd_pcm_chmap_t *map;
+
+	map = malloc((src->channels + 1) * sizeof(int));
+	if (!map)
+		return NULL;
+	memcpy(map, src, (src->channels + 1) * sizeof(int));
+	return map;
+}
+
+/* make a copy of channel maps */
+snd_pcm_chmap_query_t **
+_snd_pcm_copy_chmap_query(snd_pcm_chmap_query_t * const *src)
+{
+	snd_pcm_chmap_query_t * const *p;
+	snd_pcm_chmap_query_t **maps;
+	int i, nums;
+
+	for (nums = 0, p = src; *p; p++)
+		nums++;
+
+	maps = calloc(nums + 1, sizeof(*maps));
+	if (!maps)
+		return NULL;
+	for (i = 0; i < nums; i++) {
+		maps[i] = malloc((src[i]->map.channels + 2) * sizeof(int));
+		if (!maps[i]) {
+			snd_pcm_free_chmaps(maps);
+			return NULL;
+		}
+		memcpy(maps[i], src[i], (src[i]->map.channels + 2) * sizeof(int));
+	}
+	return maps;
+}
+
+/* select the channel map with the current PCM channels and make a copy */
+snd_pcm_chmap_t *
+_snd_pcm_choose_fixed_chmap(snd_pcm_t *pcm, snd_pcm_chmap_query_t * const *maps)
+{
+	snd_pcm_chmap_query_t * const *p;
+
+	for (p = maps; *p; p++) {
+		if ((*p)->map.channels == pcm->channels)
+			return _snd_pcm_copy_chmap(&(*p)->map);
+	}
+	return NULL;
+}
+
+/* make chmap_query array from the config tree;
+ * conf must be a compound (array)
+ */
+snd_pcm_chmap_query_t **
+_snd_pcm_parse_config_chmaps(snd_config_t *conf)
+{
+	snd_pcm_chmap_t *chmap;
+	snd_pcm_chmap_query_t **maps;
+	snd_config_iterator_t i, next;
+	const char *str;
+	int nums, err;
+
+	if (snd_config_get_type(conf) != SND_CONFIG_TYPE_COMPOUND)
+		return NULL;
+
+	nums = 0;
+	snd_config_for_each(i, next, conf) {
+		nums++;
+	}
+
+	maps = calloc(nums + 1, sizeof(*maps));
+	if (!maps)
+		return NULL;
+
+	nums = 0;
+	snd_config_for_each(i, next, conf) {
+		snd_config_t *n = snd_config_iterator_entry(i);
+		err = snd_config_get_string(n, &str);
+		if (err < 0)
+			goto error;
+		chmap = snd_pcm_chmap_parse_string(str);
+		if (!chmap)
+			goto error;
+		if (_copy_to_fixed_query_map(maps + nums, chmap)) {
+			free(chmap);
+			goto error;
+		}
+		nums++;
+	}
+	return maps;
+
+ error:
+	snd_pcm_free_chmaps(maps);
+	return NULL;
+}
 #endif /* DOC_HIDDEN */
 
 /*

@@ -145,6 +145,7 @@ static int open_ctl(snd_use_case_mgr_t *uc_mgr,
 		free(uc_mgr->ctl_dev);
 		uc_mgr->ctl_dev = NULL;
 		snd_ctl_close(uc_mgr->ctl);
+		uc_mgr->ctl = NULL;
 	
 	}
 	err = snd_ctl_open(ctl, ctl_dev, 0);
@@ -701,42 +702,42 @@ static int set_device(snd_use_case_mgr_t *uc_mgr,
  * \param card_name name of card to open
  * \return zero on success, otherwise a negative error code
  */
-int snd_use_case_mgr_open(snd_use_case_mgr_t **mgr,
+int snd_use_case_mgr_open(snd_use_case_mgr_t **uc_mgr,
 			  const char *card_name)
 {
-	snd_use_case_mgr_t *uc_mgr;
+	snd_use_case_mgr_t *mgr;
 	int err;
 
 	/* create a new UCM */
-	uc_mgr = calloc(1, sizeof(snd_use_case_mgr_t));
-	if (uc_mgr == NULL)
+	mgr = calloc(1, sizeof(snd_use_case_mgr_t));
+	if (mgr == NULL)
 		return -ENOMEM;
-	INIT_LIST_HEAD(&uc_mgr->verb_list);
-	INIT_LIST_HEAD(&uc_mgr->default_list);
-	INIT_LIST_HEAD(&uc_mgr->value_list);
-	INIT_LIST_HEAD(&uc_mgr->active_modifiers);
-	INIT_LIST_HEAD(&uc_mgr->active_devices);
-	pthread_mutex_init(&uc_mgr->mutex, NULL);
+	INIT_LIST_HEAD(&mgr->verb_list);
+	INIT_LIST_HEAD(&mgr->default_list);
+	INIT_LIST_HEAD(&mgr->value_list);
+	INIT_LIST_HEAD(&mgr->active_modifiers);
+	INIT_LIST_HEAD(&mgr->active_devices);
+	pthread_mutex_init(&mgr->mutex, NULL);
 
-	uc_mgr->card_name = strdup(card_name);
-	if (uc_mgr->card_name == NULL) {
-		free(uc_mgr);
+	mgr->card_name = strdup(card_name);
+	if (mgr->card_name == NULL) {
+		free(mgr);
 		return -ENOMEM;
 	}
 
 	/* get info on use_cases and verify against card */
-	err = import_master_config(uc_mgr);
+	err = import_master_config(mgr);
 	if (err < 0) {
 		uc_error("error: failed to import %s use case configuration %d",
 			card_name, err);
 		goto err;
 	}
 
-	*mgr = uc_mgr;
+	*uc_mgr = mgr;
 	return 0;
 
 err:
-	uc_mgr_free(uc_mgr);
+	uc_mgr_free(mgr);
 	return err;
 }
 
@@ -972,10 +973,12 @@ static int get_conflicting_device_list(snd_use_case_mgr_t *uc_mgr,
 	return get_supcon_device_list(uc_mgr, list, name, DEVLIST_CONFLICTING);
 }
 
+#ifndef DOC_HIDDEN
 struct myvalue {
         struct list_head list;
         char *value;
 };
+#endif
 
 static int add_values(struct list_head *list,
                       const char *identifier,
@@ -1644,7 +1647,8 @@ int snd_use_case_set(snd_use_case_mgr_t *uc_mgr,
                 		goto __end;
                         }
                 } else {
-                        str = NULL;
+                        err = -EINVAL;
+                        goto __end;
                 }
                 if (check_identifier(identifier, "_swdev"))
                         err = switch_device(uc_mgr, str, value);

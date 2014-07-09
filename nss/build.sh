@@ -160,10 +160,8 @@ make BUILD_OPT=1 \
 # Build NSS (depends on our system zlib).
 XCFLAGS=""
 DSO_LDOPTS="-shared"
-if [ "${TARGET}" = "arm-unknown-linux-gnueabi" ]; then
-  XCFLAGS+=" -I${TOP}/external/zlib --sysroot=${SYSROOT}"
-  DSO_LDOPTS+=" --sysroot=${SYSROOT}"
-fi
+XCFLAGS+=" -I${TOP}/external/zlib --sysroot=${SYSROOT}"
+DSO_LDOPTS+=" --sysroot=${SYSROOT}"
 make BUILD_OPT=1 CPU_TAG=_${TARGET_ARCH} OS_TEST=${TARGET_ARCH} CC=${CC} \
   DSO_CFLAGS="${NSS_CFLAGS}" AR="${AR} cr \$@" NSINSTALL=${NSINSTALL} \
   XCFLAGS="${XCFLAGS}" DSO_LDOPTS="${DSO_LDOPTS}" all

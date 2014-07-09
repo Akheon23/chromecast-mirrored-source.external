@@ -1040,7 +1040,7 @@ static int snd_pcm_plug_hw_params(snd_pcm_t *pcm, snd_pcm_hw_params_t *params)
 			return err;
 	}
 	slave = plug->gen.slave;
-	err = _snd_pcm_hw_params(slave, params);
+	err = _snd_pcm_hw_params_internal(slave, params);
 	if (err < 0) {
 		snd_pcm_plug_clear(pcm);
 		return err;
@@ -1084,6 +1084,9 @@ static const snd_pcm_ops_t snd_pcm_plug_ops = {
 	.async = snd_pcm_generic_async,
 	.mmap = snd_pcm_generic_mmap,
 	.munmap = snd_pcm_generic_munmap,
+	.query_chmaps = snd_pcm_generic_query_chmaps,
+	.get_chmap = snd_pcm_generic_get_chmap,
+	.set_chmap = snd_pcm_generic_set_chmap,
 };
 
 /**
